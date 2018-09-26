@@ -1,117 +1,152 @@
-<?php
-require_once ("secure_area.php");
-require_once ("interfaces/idata_controller.php");
-class Giftcards extends Secure_area implements iData_controller
+<?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
+
+require_once("Secure_Controller.php");
+
+class Giftcards extends Secure_Controller
 {
-	function __construct()
+	public function __construct()
 	{
 		parent::__construct('giftcards');
 	}
 
-	function index()
+	public function index()
 	{
-		$config['base_url'] = site_url('/giftcards/index');
-		$config['total_rows'] = $this->Giftcard->count_all();
-		$config['per_page'] = '20';
-		$config['uri_segment'] = 3;
-		$this->pagination->initialize($config);
-		
-		$data['controller_name']=strtolower(get_class());
-		$data['form_width']=$this->get_form_width();
-		$data['manage_table']=get_giftcards_manage_table( $this->Giftcard->get_all( $config['per_page'], $this->uri->segment( $config['uri_segment'] ) ), $this );
-		$this->load->view('giftcards/manage',$data);
+		$data['table_headers'] = $this->xss_clean(get_giftcards_manage_table_headers());
+
+		$this->load->view('giftcards/manage', $data);
 	}
 
-	function search()
+	/*
+	Returns Giftcards table data rows. This will be called with AJAX.
+	*/
+	public function search()
 	{
-		$search=$this->input->post('search');
-		$data_rows=get_giftcards_manage_table_data_rows($this->Giftcard->search($search),$this);
-		echo $data_rows;
+		$search = $this->input->get('search');
+		$limit  = $this->input->get('limit');
+		$offset = $this->input->get('offset');
+		$sort   = $this->input->get('sort');
+		$order  = $this->input->get('order');
+
+		$giftcards = $this->Giftcard->search($search, $limit, $offset, $sort, $order);
+		$total_rows = $this->Giftcard->get_found_rows($search);
+
+		$data_rows = array();
+		foreach($giftcards->result() as $giftcard)
+		{
+			$data_rows[] = $this->xss_clean(get_giftcard_data_row($giftcard));
+		}
+
+		echo json_encode(array('total' => $total_rows, 'rows' => $data_rows));
 	}
 
 	/*
 	Gives search suggestions based on what is being searched for
 	*/
-	function suggest()
+
+	public function suggest()
 	{
-		$suggestions = $this->Giftcard->get_search_suggestions($this->input->post('q'),$this->input->post('limit'));
-		echo implode("\n",$suggestions);
-	}
-/** GARRISON ADDED 5/3/2013 **/
-	/*
-	 Gives search suggestions for person_id based on what is being searched for
-	*/
-	function suggest_person()
-	{
-		$suggestions = $this->Giftcard->get_person_search_suggestions($this->input->post('q'),$this->input->post('limit'));
-		echo implode("\n",$suggestions);
-	}
-/** END GARRISON ADDED **/
-	function get_row()
-	{
-		$giftcard_id = $this->input->post('row_id');
-		$data_row=get_giftcard_data_row($this->Giftcard->get_info($giftcard_id),$this);
-		echo $data_row;
+		$suggestions = $this->xss_clean($this->Giftcard->get_search_suggestions($this->input->get('term'), TRUE));
+
+		echo json_encode($suggestions);
 	}
 
-	function view($giftcard_id=-1)
+	public function suggest_search()
 	{
-		$data['giftcard_info']=$this->Giftcard->get_info($giftcard_id);
+		$suggestions = $this->xss_clean($this->Giftcard->get_search_suggestions($this->input->post('term')));
 
-		$this->load->view("giftcards/form",$data);
+		echo json_encode($suggestions);
 	}
-	
-	function save($giftcard_id=-1)
-	{
-		$giftcard_data = array(
-		'giftcard_number'=>$this->input->post('giftcard_number'),
-		'value'=>$this->input->post('value'),
-		'person_id'=>$this->input->post('person_id')/**GARRISON ADDED 4/22/2013**/		
-		);
 
-		if( $this->Giftcard->save( $giftcard_data, $giftcard_id ) )
+	public function get_row($row_id)
+	{
+		$data_row = $this->xss_clean(get_giftcard_data_row($this->Giftcard->get_info($row_id)));
+
+		echo json_encode($data_row);
+	}
+
+	public function view($giftcard_id = -1)
+	{
+		$giftcard_info = $this->Giftcard->get_info($giftcard_id);
+
+		$data['selected_person_name'] = ($giftcard_id > 0 && isset($giftcard_info->person_id)) ? $giftcard_info->first_name . ' ' . $giftcard_info->last_name : '';
+		$data['selected_person_id'] = $giftcard_info->person_id;
+		if($this->config->item('giftcard_number') == "random")
 		{
-			//New giftcard
-			if($giftcard_id==-1)
-			{
-				echo json_encode(array('success'=>true,'message'=>$this->lang->line('giftcards_successful_adding').' '.
-				$giftcard_data['giftcard_number'],'giftcard_id'=>$giftcard_data['giftcard_id']));
-				$giftcard_id = $giftcard_data['giftcard_id'];
-			}
-			else //previous giftcard
-			{
-				echo json_encode(array('success'=>true,'message'=>$this->lang->line('giftcards_successful_updating').' '.
-				$giftcard_data['giftcard_number'],'giftcard_id'=>$giftcard_id));
-			}
-		}
-		else//failure
-		{
-			echo json_encode(array('success'=>false,'message'=>$this->lang->line('giftcards_error_adding_updating').' '.
-			$giftcard_data['giftcard_number'],'giftcard_id'=>-1));
-		}
-	}
-
-	function delete()
-	{
-		$giftcards_to_delete=$this->input->post('ids');
-
-		if($this->Giftcard->delete_list($giftcards_to_delete))
-		{
-			echo json_encode(array('success'=>true,'message'=>$this->lang->line('giftcards_successful_deleted').' '.
-			count($giftcards_to_delete).' '.$this->lang->line('giftcards_one_or_multiple')));
+			$data['giftcard_number'] = $giftcard_id > 0 ? $giftcard_info->giftcard_number : '';
 		}
 		else
 		{
-			echo json_encode(array('success'=>false,'message'=>$this->lang->line('giftcards_cannot_be_deleted')));
+			$max_giftnumber = isset($this->Giftcard->get_max_number()->giftcard_number) ? $this->Giftcard->get_max_number()->giftcard_number : 0;
+			$data['giftcard_number'] = $giftcard_id > 0 ? $giftcard_info->giftcard_number : $max_giftnumber + 1;
+		}
+		$data['giftcard_id'] = $giftcard_id;
+		$data['giftcard_value'] = $giftcard_info->value;
+
+		$data = $this->xss_clean($data);
+
+		$this->load->view("giftcards/form", $data);
+	}
+
+	public function save($giftcard_id = -1)
+	{
+		$giftcard_number = $this->input->post('giftcard_number');
+
+		if($giftcard_id == -1 && trim($giftcard_number) == '')
+		{
+			$giftcard_number = $this->Giftcard->generate_unique_giftcard_name($this->input->post('giftcard_amount'));
+		}
+
+		$giftcard_data = array(
+			'record_time' => date('Y-m-d H:i:s'),
+			'giftcard_number' => $giftcard_number,
+			'value' => parse_decimals($this->input->post('giftcard_amount')),
+			'person_id' => $this->input->post('person_id') == '' ? NULL : $this->input->post('person_id')
+		);
+
+		if($this->Giftcard->save($giftcard_data, $giftcard_id))
+		{
+			$giftcard_data = $this->xss_clean($giftcard_data);
+
+			//New giftcard
+			if($giftcard_id == -1)
+			{
+				echo json_encode(array('success' => TRUE, 'message' => $this->lang->line('giftcards_successful_adding') . ' ' .
+								$giftcard_data['giftcard_number'], 'id' => $giftcard_data['giftcard_id']));
+			}
+			else //Existing giftcard
+			{
+				echo json_encode(array('success' => TRUE, 'message' => $this->lang->line('giftcards_successful_updating') . ' ' .
+								$giftcard_data['giftcard_number'], 'id' => $giftcard_id));
+			}
+		}
+		else //failure
+		{
+			$giftcard_data = $this->xss_clean($giftcard_data);
+			
+			echo json_encode(array('success' => FALSE, 'message' => $this->lang->line('giftcards_error_adding_updating') . ' ' .
+							$giftcard_data['giftcard_number'], 'id' => -1));
 		}
 	}
-		
-	/*
-	get the width for the add/edit form
-	*/
-	function get_form_width()
+
+	public function ajax_check_number_giftcard()
 	{
-		return 360;
+		$parsed_value = parse_decimals($this->input->post('giftcard_amount'));
+		echo json_encode(array('success' => $parsed_value !== FALSE, 'giftcard_amount' => $parsed_value));
+	}
+
+	public function delete()
+	{
+		$giftcards_to_delete = $this->xss_clean($this->input->post('ids'));
+
+		if($this->Giftcard->delete_list($giftcards_to_delete))
+		{
+			echo json_encode(array('success' => TRUE, 'message' => $this->lang->line('giftcards_successful_deleted') . ' ' .
+							count($giftcards_to_delete).' '.$this->lang->line('giftcards_one_or_multiple')));
+		}
+		else
+		{
+			echo json_encode(array('success' => FALSE, 'message' => $this->lang->line('giftcards_cannot_be_deleted')));
+		}
 	}
 }
 ?>

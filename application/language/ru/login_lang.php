@@ -1,8 +1,10 @@
-<?php
-$lang['login_login'] = 'Вход';
-$lang['login_username'] = 'Имя';
-$lang['login_password'] = 'Пароль';
-$lang['login_go'] = 'ходите';
-$lang['login_invalid_username_and_password'] = 'Неправелная Имя/Пароль';
-$lang['login_welcome_message'] = 'Добро пожаловать в Open Source Point of Sale. Чтобы продолжить, пожалуйста войдите на сайт, используя имя и пароль.';
-?>
+<?php 
+
+$lang["login_gcaptcha"] = "";
+$lang["login_go"] = "ходите";
+$lang["login_invalid_gcaptcha"] = "";
+$lang["login_invalid_installation"] = "";
+$lang["login_invalid_username_and_password"] = "Неправелная Имя/Пароль";
+$lang["login_login"] = "Вход";
+$lang["login_password"] = "Пароль";
+$lang["login_username"] = "Имя";

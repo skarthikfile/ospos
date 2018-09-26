@@ -1,66 +1,75 @@
-<?php
-require_once("report.php");
-class Summary_taxes extends Report
+<?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
+
+require_once("Summary_report.php");
+
+class Summary_taxes extends Summary_report
 {
-	function __construct()
+	protected function _get_data_columns()
 	{
-		parent::__construct();
+		return array(
+			array('tax_percent' => $this->lang->line('reports_tax_percent'), 'sorter' => 'number_sorter'),
+			array('report_count' => $this->lang->line('reports_count')),
+			array('subtotal' => $this->lang->line('reports_subtotal'), 'sorter' => 'number_sorter'),
+			array('tax' => $this->lang->line('reports_tax'), 'sorter' => 'number_sorter'),
+			array('total' => $this->lang->line('reports_total'), 'sorter' => 'number_sorter'));
 	}
-	
-	public function getDataColumns()
+
+	protected function _where(array $inputs)
 	{
-		return array($this->lang->line('reports_tax_percent'), $this->lang->line('reports_subtotal'), $this->lang->line('reports_total'), $this->lang->line('reports_tax'));
+		if(empty($this->config->item('date_or_time_format')))
+		{
+			$this->db->where('DATE(sales.sale_time) BETWEEN ' . $this->db->escape($inputs['start_date']) . ' AND ' . $this->db->escape($inputs['end_date']));
+		}
+		else
+		{
+			$this->db->where('sales.sale_time BETWEEN ' . $this->db->escape(rawurldecode($inputs['start_date'])) . ' AND ' . $this->db->escape(rawurldecode($inputs['end_date'])));
+		}
 	}
-	
+
 	public function getData(array $inputs)
 	{
-		
-		$quanitity_cond = '';
-		if ($inputs['sale_type'] == 'sales')
+		$where = '';
+
+		if(empty($this->config->item('date_or_time_format')))
 		{
-			$quanitity_cond = 'and quantity_purchased > 0';
+			$where .= 'WHERE DATE(sale_time) BETWEEN ' . $this->db->escape($inputs['start_date']) . ' AND ' . $this->db->escape($inputs['end_date']);
 		}
-		elseif ($inputs['sale_type'] == 'returns')
+		else
 		{
-			$quanitity_cond = 'and quantity_purchased < 0';
+			$where .= 'WHERE sale_time BETWEEN ' . $this->db->escape(rawurldecode($inputs['start_date'])) . ' AND ' . $this->db->escape(rawurldecode($inputs['end_date']));
 		}
-		
-		$query = $this->db->query("SELECT percent, SUM(subtotal) as subtotal, sum(total) as total, sum(tax) as tax 
-		FROM (SELECT name, CONCAT( percent,  '%' ) AS percent, (
-		item_unit_price * quantity_purchased - item_unit_price * quantity_purchased * discount_percent /100
-		) AS subtotal, ROUND( (
-		item_unit_price * quantity_purchased - item_unit_price * quantity_purchased * discount_percent /100
-		) * ( 1 + ( percent /100 ) ) , 2 ) AS total, ROUND( (
-		item_unit_price * quantity_purchased - item_unit_price * quantity_purchased * discount_percent /100
-		) * ( percent /100 ) , 2 ) AS tax
-		FROM ".$this->db->dbprefix('sales_items_taxes')."
-		JOIN ".$this->db->dbprefix('sales_items')." ON "
-		.$this->db->dbprefix('sales_items').'.sale_id='.$this->db->dbprefix('sales_items_taxes').'.sale_id'." and "
-		.$this->db->dbprefix('sales_items').'.item_id='.$this->db->dbprefix('sales_items_taxes').'.item_id'." and "
-		.$this->db->dbprefix('sales_items').'.line='.$this->db->dbprefix('sales_items_taxes').'.line'
-		." JOIN ".$this->db->dbprefix('sales')." ON ".$this->db->dbprefix('sales_items_taxes').".sale_id=".$this->db->dbprefix('sales').".sale_id
-		WHERE date(sale_time) BETWEEN '".$inputs['start_date']."' and '".$inputs['end_date']."' $quanitity_cond) as temp_taxes
-		GROUP BY percent");
+
+		if($this->config->item('tax_included'))
+		{
+			$sale_total = '(sales_items.item_unit_price * sales_items.quantity_purchased * (1 - sales_items.discount_percent / 100))';
+			$sale_subtotal = '(sales_items.item_unit_price * sales_items.quantity_purchased * (1 - sales_items.discount_percent / 100) * (100 / (100 + sales_items_taxes.percent)))';
+		}
+		else
+		{
+			$sale_total = '(sales_items.item_unit_price * sales_items.quantity_purchased * (1 - sales_items.discount_percent / 100) * (1 + (sales_items_taxes.percent / 100)))';
+			$sale_subtotal = '(sales_items.item_unit_price * sales_items.quantity_purchased * (1 - sales_items.discount_percent / 100))';
+		}
+
+		$decimals = totals_decimals();
+
+		$query = $this->db->query("SELECT percent, count(*) AS count, ROUND(SUM(subtotal), $decimals) AS subtotal, ROUND(SUM(tax), $decimals) AS tax, ROUND(SUM(total), $decimals) AS total
+			FROM (
+				SELECT
+					CONCAT(IFNULL(ROUND(percent, $decimals), 0), '%') AS percent,
+					$sale_subtotal AS subtotal,
+					IFNULL(sales_items_taxes.item_tax_amount, 0) AS tax,
+					IFNULL($sale_total, $sale_subtotal) AS total
+					FROM " . $this->db->dbprefix('sales_items') . ' AS sales_items
+					INNER JOIN ' . $this->db->dbprefix('sales') . ' AS sales
+						ON sales_items.sale_id = sales.sale_id
+					LEFT OUTER JOIN ' . $this->db->dbprefix('sales_items_taxes') . ' AS sales_items_taxes
+						ON sales_items.sale_id = sales_items_taxes.sale_id AND sales_items.item_id = sales_items_taxes.item_id AND sales_items.line = sales_items_taxes.line
+					' . $where . '
+				) AS temp_taxes
+			GROUP BY percent'
+		);
+
 		return $query->result_array();
-	}
-	
-	public function getSummaryData(array $inputs)
-	{
-		$this->db->select('sum(subtotal) as subtotal, sum(total) as total, sum(tax) as tax, sum(profit) as profit');
-		$this->db->from('sales_items_temp');
-		$this->db->join('items', 'sales_items_temp.item_id = items.item_id');
-		$this->db->where('sale_date BETWEEN "'. $inputs['start_date']. '" and "'. $inputs['end_date'].'"');
-		
-		if ($inputs['sale_type'] == 'sales')
-		{
-			$this->db->where('quantity_purchased > 0');
-		}
-		elseif ($inputs['sale_type'] == 'returns')
-		{
-			$this->db->where('quantity_purchased < 0');
-		}
-		
-		return $this->db->get()->row_array();
 	}
 }
 ?>

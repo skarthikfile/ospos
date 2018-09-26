@@ -1,8 +1,10 @@
-<?php
-$lang['login_login'] = 'Masuk';
-$lang['login_username'] = 'Nama pengguna';
-$lang['login_password'] = 'Kata kunci';
-$lang['login_go'] = 'Lanjutkan';
-$lang['login_invalid_username_and_password'] = 'nama pengguna/kata kunci salah';
-$lang['login_welcome_message'] = 'Selamat datang di Open Source Point of Sale System. Untuk melanjutkan, silakan login menggunakan form nama pengguna dan kata kunci di bawah ini.';
-?>
+<?php 
+
+$lang["login_gcaptcha"] = "";
+$lang["login_go"] = "Lanjutkan";
+$lang["login_invalid_gcaptcha"] = "";
+$lang["login_invalid_installation"] = "";
+$lang["login_invalid_username_and_password"] = "Nama Pengguna/Kata Kunci Salah";
+$lang["login_login"] = "Masuk";
+$lang["login_password"] = "Kata kunci";
+$lang["login_username"] = "Nama Anda";

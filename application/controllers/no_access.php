@@ -1,15 +1,15 @@
-<?php
+<?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
+
 class No_Access extends CI_Controller 
 {
-	function __construct()
+	public function index($module_id = '', $permission_id = '')
 	{
-		parent::__construct();
-	}
-	
-	function index($module_id='')
-	{
-		$data['module_name']=$this->Module->get_module_name($module_id);
-		$this->load->view('no_access',$data);
+		$data['module_name']   = $this->Module->get_module_name($module_id);
+		$data['permission_id'] = $permission_id;
+		
+		$data = $this->security->xss_clean($data);
+		
+		$this->load->view('no_access', $data);
 	}
 }
 ?>

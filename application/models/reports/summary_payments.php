@@ -1,50 +1,51 @@
-<?php
-require_once("report.php");
-class Summary_payments extends Report
+<?php if ( ! defined('BASEPATH')) exit('No direct script access allowed');
+
+require_once("Summary_report.php");
+
+class Summary_payments extends Summary_report
 {
-	function __construct()
+	protected function _get_data_columns()
 	{
-		parent::__construct();
+		return array(
+			array('payment_type' => $this->lang->line('reports_payment_type')),
+			array('report_count' => $this->lang->line('reports_count')),
+			array('amount_due' => $this->lang->line('sales_amount_due'), 'sorter' => 'number_sorter'));
 	}
-	
-	public function getDataColumns()
-	{
-		return array($this->lang->line('reports_payment_type'), $this->lang->line('reports_total'));
-	}
-	
+
 	public function getData(array $inputs)
 	{
-		$this->db->select('sales_payments.payment_type, SUM(payment_amount) as payment_amount', false);
-		$this->db->from('sales_payments');
-		$this->db->join('sales', 'sales.sale_id=sales_payments.sale_id');
-		$this->db->where('date(sale_time) BETWEEN "'. $inputs['start_date']. '" and "'. $inputs['end_date'].'"');
-		if ($inputs['sale_type'] == 'sales')
-		{
-			$this->db->where('payment_amount > 0');
-		}
-		elseif ($inputs['sale_type'] == 'returns')
-		{
-			$this->db->where('payment_amount < 0');
-		}
+		$this->db->select('sales_payments.payment_type, COUNT(DISTINCT sales_payments.sale_id) AS count, SUM(sales_items.item_unit_price * sales_items.quantity_purchased * (1 - sales_items.discount_percent / 100)) AS payment_amount');
+		$this->db->from('sales_payments AS sales_payments');
+		$this->db->join('sales AS sales', 'sales.sale_id = sales_payments.sale_id');
+		$this->db->join('sales_items AS sales_items', 'sales_items.sale_id = sales_payments.sale_id', 'left');
+
+		$this->_where($inputs);
+
 		$this->db->group_by("payment_type");
-		return $this->db->get()->result_array();
-	}
-	
-	public function getSummaryData(array $inputs)
-	{
-		$this->db->select('sum(subtotal) as subtotal, sum(total) as total, sum(tax) as tax, sum(profit) as profit');
-		$this->db->from('sales_items_temp');
-		$this->db->join('items', 'sales_items_temp.item_id = items.item_id');
-		$this->db->where('sale_date BETWEEN "'. $inputs['start_date']. '" and "'. $inputs['end_date'].'"');
-		if ($inputs['sale_type'] == 'sales')
+
+		$payments = $this->db->get()->result_array();
+
+		// consider Gift Card as only one type of payment and do not show "Gift Card: 1, Gift Card: 2, etc." in the total
+		$gift_card_count = 0;
+		$gift_card_amount = 0;
+		foreach($payments as $key => $payment)
 		{
-			$this->db->where('quantity_purchased > 0');
+			if(strstr($payment['payment_type'], $this->lang->line('sales_giftcard')) !== FALSE)
+			{
+				$gift_card_count  += $payment['count'];
+				$gift_card_amount += $payment['payment_amount'];
+
+				// remove the "Gift Card: 1", "Gift Card: 2", etc. payment string
+				unset($payments[$key]);
+			}
 		}
-		elseif ($inputs['sale_type'] == 'returns')
+
+		if($gift_card_count > 0)
 		{
-			$this->db->where('quantity_purchased < 0');
+			$payments[] = array('payment_type' => $this->lang->line('sales_giftcard'), 'count' => $gift_card_count, 'payment_amount' => $gift_card_amount);
 		}
-		return $this->db->get()->row_array();
+
+		return $payments;
 	}
 }
 ?>
